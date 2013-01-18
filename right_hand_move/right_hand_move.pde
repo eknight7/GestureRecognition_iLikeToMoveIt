@@ -11,8 +11,13 @@ boolean play_song = false;
 int last_time;
 
 PVector[] right_fist = new PVector[0];
+PVector[] current = new PVector[0];
+PVector[] previous = new PVector[0];
 
 int time_check = 5000;
+boolean start = false;
+boolean tracking = true;
+boolean check2 = false;
 
 // setup() is called only once in the beginning
 void setup(){
@@ -41,8 +46,9 @@ void setup(){
   
   // load in audio file
   minim = new Minim(this);
-  song = minim.loadFile("/Users/Phoenix/Documents/iLikeToMoveIt/Beat It.mp3");
+  song = minim.loadFile("/Users/Phoenix/Documents/iLikeToMoveIt/01 Circle of Life (performed by C.mp3");
   last_time = millis();
+  
 }
 
 // draw() is called repeatedly
@@ -51,8 +57,11 @@ void draw(){
   context.update();
   
   // draw the depth image
+  //if (!(millis() - start > 20000)){
+    
   image(context.depthImage(),0,0);
-  
+  //}
+  //background(0);
   // DRAW DEPTH IMAGE FIRST AND THEN THE SKELETON ON TOP OF THE IMAGE
   
   // check if skeleton if users 1 to 10 is being tracked
@@ -62,29 +71,150 @@ void draw(){
     if (context.isTrackingSkeleton(i)){
      
       drawSkeleton(i); // draw their skeleton
+      PVector right_hand = new PVector();
+      context.getJointPositionSkeleton(i,SimpleOpenNI.SKEL_LEFT_HAND,right_hand);
+      PVector right_elbow = new PVector();
+      context.getJointPositionSkeleton(i,SimpleOpenNI.SKEL_LEFT_ELBOW,right_elbow);
+      PVector right_shoulder = new PVector();
+      context.getJointPositionSkeleton(i,SimpleOpenNI.SKEL_LEFT_SHOULDER,right_shoulder);
+      PVector torso = new PVector();
+      context.getJointPositionSkeleton(i,SimpleOpenNI.SKEL_TORSO, torso);
+      
+      PVector[] temp = new PVector[0];
+      temp = (PVector[])append(temp, current[0]); // [0] = right_hand
+      temp = (PVector[])append(temp, current[1]); // [1] = right_elbow
+      temp = (PVector[])append(temp, current[2]); //[2] = right_shoulder
+      temp = (PVector[])append(temp, current[3]); //[3] = torso
+      
+      current = new PVector[0];
+      current = (PVector[])append(current, right_hand); // [0] = right_hand
+      current = (PVector[])append(current, right_elbow); // [1] = right_elbow
+      current = (PVector[])append(current, right_shoulder); //[2] = right_shoulder
+      current = (PVector[])append(current, torso); //[3] = torso
+      
+      // disco_up
+      if (start && !((millis() - last_time) < 10000)){
+        if ((right_hand.y > right_elbow.y) && (right_hand.x < right_elbow.x) 
+          && (right_elbow.y > right_shoulder.y) && (right_elbow.x < right_shoulder.x)){
+            stroke(255,165,0);
+            context.drawLimb(i, SimpleOpenNI.SKEL_LEFT_SHOULDER, SimpleOpenNI.SKEL_LEFT_ELBOW);
+            context.drawLimb(i, SimpleOpenNI.SKEL_LEFT_ELBOW, SimpleOpenNI.SKEL_LEFT_HAND);
+            //play();
+          }
+        stroke(0,0,255);
+        start = false;
+        tracking = true;
+      }
+      
+      if (tracking && !((millis() - last_time) < 10000)){
+        
+        stroke(255,165,0);
+        context.drawLimb(i, SimpleOpenNI.SKEL_LEFT_SHOULDER, SimpleOpenNI.SKEL_LEFT_ELBOW);
+        context.drawLimb(i, SimpleOpenNI.SKEL_LEFT_ELBOW, SimpleOpenNI.SKEL_LEFT_HAND);
+        
+        // if the right hand's height is decreasing : y
+        // if the right hand's horizontal is increasing : x
+        // if the right elbow's height is decreasing : y
+        // if the right elbow's horizontal is increasing : x
+        if ( ch_thresh_great(current[0].y,previous[0].y) 
+          && ch_thresh_less(current[0].x,previous[0].x)
+          && ch_thresh_great(current[1].y,previous[1].y)
+          && ch_thresh_less(current[1].x, previous[1].x)){
+            // keep tracking
+            tracking = true;
+          }
+        else { 
+          println("Stopped tracking as right hand is not moving correctly");
+          
+          println ("cur rhand y = " + current[0].y + " : cur rhand x = " + current[0].x);
+          println ("cur relbow y = " + current[1].y + " : cur relbow x = " + current[1].y);
+          println ("prev rhand y = " + previous[0].y + " : prev rhand x = " + previous[0].x);
+          println ("prev relbow y = " + previous[1].y + " : prev relbow x = " + previous[1].y);
+          println ("ch_thresh_great(cur rhand y, prev rhand y) = " + ch_thresh_great(current[0].y,previous[0].y));
+          println ("ch_thresh_less(cur rhand x, prev rhand x) = " + ch_thresh_great(current[0].x,previous[0].x));
+          println ("ch_thresh_great(cur relbow y, prev relbow y) = " + ch_thresh_great(current[1].y,previous[1].y));
+          println ("ch_thresh_less(cur relbow x, prev relbow x) = " + ch_thresh_great(current[1].x,previous[1].x));
+          
+          tracking = false;
+          check2 = false;
+        }
+        // if the right hand and elbow are coming below the shoulder
+        if ((current[0].y < current[1].y) && (current[0].x > current[1].x)
+          && (current[1].y < current[2].y) && (current[1].x > current[2].x)){
+           check2 = true; //reached checkpoint 2
+          } 
+          
+        if (check2 &&
+           !(ch_thresh_great(current[0].y, current[1].y) &&
+             ch_thresh_less(current[0].x, current[1].x) &&
+             ch_thresh_great(current[1].y, current[2].y) &&
+             ch_thresh_less(current[1].x, current[2].x))){
+               check2 = false;
+               tracking = false;
+               println("Stopped tracking disturbed checkpoint 2");
+             }
+        // if the right hand and elbow were below the shoulder and now are coming below the torso
+        if (check2 
+           && (current[0].y < current[1].y) && (current[0].x > current[1].x)
+           && (current[1].y < current[3].y) && (current[1].x > current[3].x)){
+       
+             //BINGO
+             play_song = true; 
+             play();
+             
+             println("OOOLALA");
+           }
+      }
+      stroke(0,0,255);
+         
+      arrayCopy(temp, previous); // update the previous frame to the current frame
+       
+        
       /*if (play_song){
         play();
       }*/
   
+      /* 
       if (start_save){
         save_user_right(i);
+        
         int t = millis() - last_time;
-        
-        
         if (t > time_check){
           right_fist_moved(i);
           last_time = millis();
         }
-        
+         
       }
+      */
     }
   }
   
+  //last_time = millis();
+  
   if(start_save){
-    saveFrame("/Users/Phoenix/Documents/iLikeToMoveIt/right_fist_test/rh-#####.png");
+    //println("HI!");
+    String fname = "/Users/Phoenix/Documents/iLikeToMoveIt/right_hand_test/rh_coord-#####.png";
+    saveFrame(fname);
   }
   
 }
+
+boolean ch_thresh_less(float cur, float prev){
+  int threshold = 60;
+  if ( ((prev - threshold) <= cur) ){
+    return true;
+  }
+  return false;
+}
+
+boolean ch_thresh_great(float cur, float prev){
+  int threshold = 60;
+  if ( ((prev + threshold) >= cur) ){
+    return true;
+  }
+  return false;
+}
+    
 
 // draw skeleton with selected joints
 void drawSkeleton(int userId)
@@ -222,8 +352,28 @@ void onEndCalibration(int userId, boolean successful){
     //begin skeleton tracking
     context.startTrackingSkeleton(userId);
     start_save = true;
-    
+    start = true;
     last_time = millis();
+    
+    println("started tracking at " + last_time);
+    PVector right_hand = new PVector();
+    context.getJointPositionSkeleton(userId,SimpleOpenNI.SKEL_LEFT_HAND,right_hand);
+    PVector right_elbow = new PVector();
+    context.getJointPositionSkeleton(userId,SimpleOpenNI.SKEL_LEFT_ELBOW,right_elbow);
+    PVector right_shoulder = new PVector();
+    context.getJointPositionSkeleton(userId,SimpleOpenNI.SKEL_LEFT_SHOULDER,right_shoulder);
+    PVector torso = new PVector();
+    context.getJointPositionSkeleton(userId,SimpleOpenNI.SKEL_TORSO, torso);
+    current = (PVector[])append(current, right_hand); // [0] = right_hand
+    current = (PVector[])append(current, right_elbow); // [1] = right_elbow
+    current = (PVector[])append(current, right_shoulder); //[2] = right_shoulder
+    current = (PVector[])append(current, torso); //[3] = torso
+    
+    previous = (PVector[])append(previous, right_hand); // [0] = right_hand
+    previous = (PVector[])append(previous, right_elbow); // [1] = right_elbow
+    previous = (PVector[])append(previous, right_shoulder); //[2] = right_shoulder
+    previous = (PVector[])append(previous, torso); //[3] = torso
+    
     //play_song = true;
     // play our song or sound effect
     //song.play();
@@ -239,12 +389,20 @@ void onEndCalibration(int userId, boolean successful){
 }
 
 void keyPressed() { // Press a key to save the data
-  String[] lines = new String[right_fist.length];
-  for (int i = 0; i < right_fist.length; i++) {
-    lines[i] = "x = " + right_fist[i].x + " : y = " + right_fist[i].y;
+  if ( key == 's') { 
+    String[] lines = new String[right_fist.length];
+    for (int i = 0; i < right_fist.length; i++) {
+      lines[i] = "x = " + right_fist[i].x + " : y = " + right_fist[i].y;
+    }
+    String filename = "/Users/Phoenix/Documents/iLikeToMoveIt/gesture_saves/lines_disco-" + millis() + ".txt";
+    saveStrings(filename, lines);
+    String fname = "/Users/Phoenix/Documents/iLikeToMoveIt/gesture_saves/rh_coord_disco-" + millis() + ".png";
+    saveFrame(fname);
+    right_fist = new PVector[0];
   }
-  saveStrings("/Users/Phoenix/Documents/iLikeToMoveIt/right_hand/lines.txt", lines);
-  exit(); // Stop the program
+  else{  
+    exit(); // Stop the program
+  }
 }
 
 void right_fist_moved(int userId){
